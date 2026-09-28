@@ -318,7 +318,9 @@ export default function App() {
   const [erroLogin, setErroLogin] = useState("");
 
   const [turmas, setTurmas] = useState([]);
-  const [turmaAtualId, setTurmaAtualId] = useState(null);
+  const [turmaAtualId, setTurmaAtualId] = useState(() => {
+  return localStorage.getItem("turmaAtualId") || "";
+  });
   const [trabalhos, setTrabalhos] = useState([]);
   const [carregandoTrabalhos, setCarregandoTrabalhos] = useState(false);
 
@@ -387,7 +389,11 @@ export default function App() {
         dados = (data || []).map((d) => d.turmas).filter(Boolean);
       }
       setTurmas(dados);
-      if (dados.length > 0) setTurmaAtualId(dados[0].id);
+      if (dados.length > 0 && !turmaAtualId){
+        setTurmaAtualId(dados[0].id);
+      } else if (dados.length > 0 && !dados.some(t => t.id === turmaAtualId)) {
+        setTurmaAtualId(dados[0].id);
+      }
     })();
   }, [user]);
 
@@ -404,7 +410,13 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (turmaAtualId) carregarTrabalhos(turmaAtualId);
+    if(turmaAtualId){
+      localStorage.setItem("turmaAtualId", turmaAtualId);
+    }
+     
+    if (turmaAtualId){
+      carregarTrabalhos(turmaAtualId);
+    } 
   }, [turmaAtualId]);
 
   async function excluirTrabalho(trabalho) {
