@@ -135,7 +135,8 @@ function AddTrabalhoModal({ turma, user, onClose, onPublicado }) {
       const { data, error } = await supabase
         .from("turma_alunos")
         .select("aluno_id, usuarios(id, nome, email)")
-        .eq("turma_id", turma.id);
+        .eq("turma_id", turma.id)
+        .order("nome", {ascending: true});
       if (!error) setAlunosDaTurma((data || []).map((d) => d.usuarios).filter(Boolean));
     }
     carregar();
@@ -372,10 +373,17 @@ export default function App() {
     (async () => {
       let dados = [];
       if (user.papel === "professora") {
-        const { data } = await supabase.from("turmas").select("*").eq("professora_id", user.uid);
+        const { data } = await supabase
+          .from("turmas")  
+          .select("*")  
+          .eq("professora_id", user.uid)
+          .order("nome", { ascending: true });
         dados = data || [];
       } else {
-        const { data } = await supabase.from("turma_alunos").select("turmas(*)").eq("aluno_id", user.uid);
+        const { data } = await supabase
+          .from("turma_alunos")
+          .select("turmas(*)")
+          .eq("aluno_id", user.uid);
         dados = (data || []).map((d) => d.turmas).filter(Boolean);
       }
       setTurmas(dados);
