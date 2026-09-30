@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { FileText, Image as ImageIcon, Video, Plus, Trash2, X, LogOut, ChevronDown, Users, Upload, Loader2 } from "lucide-react";
+import { FileText, Image as ImageIcon, Video, Plus, Trash2, X, LogOut, ChevronDown, Users, Upload, Loader2, LogIn } from "lucide-react";
 import { supabase } from "./supabase";
 import { entrarComGoogle, sair, papelPorEmail } from "./auth";
 import { publicarTrabalho, urlDoArquivo } from "./trabalhos";
@@ -59,7 +59,7 @@ function LoginScreen({ onEntrar, erro, carregando }) {
           className="w-full flex items-center justify-center gap-3 rounded-lg px-4 py-3 mx-auto"
           style={{ border: `1px solid ${COLORS.borderStrong}`, background: "#fff", maxWidth: 320, opacity: carregando ? 0.6 : 1 }}
         >
-          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35.5 24 35.5c-6.4 0-11.5-5.1-11.5-11.5S17.6 12.5 24 12.5c2.9 0 5.6 1.1 7.6 2.9l5.7-5.7C33.6 6.5 29 4.5 24 4.5 13.2 4.5 4.5 13.2 4.5 24S13.2 43.5 24 43.5c10.1 0 19.5-8.2 19.5-19.5 0-1.3-.1-2.7-.4-4z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8c1.8-4.4 6-7.5 11.1-7.5 2.9 0 5.6 1.1 7.6 2.9l5.7-5.7C33.6 6.5 29 4.5 24 4.5c-7.9 0-14.7 4.5-18 11.1z"/><path fill="#4CAF50" d="M24 43.5c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.5-4.5 2.4-7.3 2.4-5.3 0-9.7-3.5-11.3-8.3l-6.5 5c3.2 6.5 10 11.3 17.9 11.3z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4-4.1 5.3l6.2 5.2C40.8 36 43.5 30.5 43.5 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
+          <LogIn size={18} style={{ color: COLORS.ink }} />
           <span style={{ fontSize: 14, fontWeight: 600, color: COLORS.ink }}>{carregando ? "Entrando..." : "Entrar com Google"}</span>
         </button>
 
@@ -121,6 +121,129 @@ function TopBar({ user, onLogout, turmaAtual, turmas, onTrocarTurma }) {
   );
 }
 
+function GerenciarAlunosModal({ turma, onClose }) {
+  const [alunos, setAlunos] = useState([]);
+  const [novoNome, setNovoNome] = useState("");
+  const [novoEmail, setNovoEmail] = useState("");
+  const [carregando, setCarregando] = useState(false);
+
+  async function carregarAlunos() {
+    const { data } = await supabase
+      .from("turma_alunos")
+      .select("aluno_id, usuarios(id, nome, email)")
+      .eq("turma_id", turma.id);
+    
+    let lista = (data || []).map((d) => d.usuarios).filter(Boolean);
+    lista.sort((a, b) => a.nome.localeCompare(b.nome));
+    setAlunos(lista);
+  }
+
+  useEffect(() => {
+    carregarAlunos();
+  }, [turma.id]);
+
+  async function adicionar(e) {
+    e.preventDefault();
+    if (!novoEmail) return;
+    setCarregando(true);
+
+    let { data: usuarioExistente } = await supabase
+      .from("usuarios")
+      .select("id")
+      .eq("email", novoEmail)
+      .single();
+
+    let alunoId = usuarioExistente?.id;
+
+    if (!alunoId) {
+      const { data: novoUsuario, error } = await supabase
+        .from("usuarios")
+        .insert([{ nome: novoNome || "Aluno", email: novoEmail, papel: "aluno" }])
+        .select("id")
+        .single();
+      if (error) {
+        alert("Erro ao criar aluno: " + error.message);
+        setCarregando(false);
+        return;
+      }
+      alunoId = novoUsuario.id;
+    }
+
+    const { error: erroVinculo } = await supabase
+      .from("turma_alunos")
+      .insert([{ turma_id: turma.id, aluno_id: alunoId }]);
+
+    if (erroVinculo) alert("O aluno já está na turma ou ocorreu um erro.");
+    else {
+      setNovoNome("");
+      setNovoEmail("");
+      carregarAlunos();
+    }
+    setCarregando(false);
+  }
+
+  async function remover(alunoId) {
+    if (!confirm("Remover este aluno da turma?")) return;
+    await supabase
+      .from("turma_alunos")
+      .delete()
+      .eq("turma_id", turma.id)
+      .eq("aluno_id", alunoId);
+    carregarAlunos();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(20,20,18,0.65)" }}>
+      <div className="bg-white rounded-2xl p-5 w-full max-w-md max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-bold" style={{ color: COLORS.ink }}>Alunos da {turma.nome}</h3>
+          <button onClick={onClose} className="hover:bg-gray-100 p-1 rounded-md"><X size={20} style={{ color: COLORS.textMuted }} /></button>
+        </div>
+        
+        <form onSubmit={adicionar} className="flex flex-col gap-2 mb-4 p-4 rounded-xl" style={{ background: COLORS.paper, border: `1px solid ${COLORS.border}` }}>
+          <input 
+            type="text" 
+            placeholder="Nome do Aluno" 
+            value={novoNome} 
+            onChange={(e) => setNovoNome(e.target.value)}
+            className="border rounded-md p-2 text-sm focus:outline-none focus:border-blue-500"
+            required
+          />
+          <input 
+            type="email" 
+            placeholder="Email institucional (@estudante...)" 
+            value={novoEmail} 
+            onChange={(e) => setNovoEmail(e.target.value)}
+            className="border rounded-md p-2 text-sm focus:outline-none focus:border-blue-500"
+            required
+          />
+          <button type="submit" disabled={carregando} className="mt-2 bg-blue-600 text-white py-2 rounded-md font-bold text-sm hover:bg-blue-700 transition opacity-100 disabled:opacity-50">
+            {carregando ? "Adicionando..." : "Adicionar Novo Aluno"}
+          </button>
+        </form>
+
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          {alunos.length === 0 ? (
+            <p className="text-sm text-center py-6" style={{ color: COLORS.textMuted }}>Nenhum aluno cadastrado nesta turma.</p>
+          ) : (
+            alunos.map((aluno) => (
+              <div key={aluno.id} className="flex justify-between items-center p-3 rounded-lg border shadow-sm" style={{ background: "#fff", borderColor: COLORS.border }}>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: COLORS.ink }}>{aluno.nome}</p>
+                  <p className="text-xs mt-0.5" style={{ color: COLORS.textMuted }}>{aluno.email}</p>
+                </div>
+                <button onClick={() => remover(aluno.id)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md transition">
+                  Remover
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AddTrabalhoModal({ turma, user, onClose, onPublicado }) {
   const [titulo, setTitulo] = useState("");
   const [file, setFile] = useState(null);
@@ -135,9 +258,13 @@ function AddTrabalhoModal({ turma, user, onClose, onPublicado }) {
       const { data, error } = await supabase
         .from("turma_alunos")
         .select("aluno_id, usuarios(id, nome, email)")
-        .eq("turma_id", turma.id)
-        .order("nome", {ascending: true});
-      if (!error) setAlunosDaTurma((data || []).map((d) => d.usuarios).filter(Boolean));
+        .eq("turma_id", turma.id);
+      
+      if (!error) {
+        let lista = (data || []).map((d) => d.usuarios).filter(Boolean);
+        lista.sort((a, b) => a.nome.localeCompare(b.nome)); 
+        setAlunosDaTurma(lista);
+      }
     }
     carregar();
   }, [turma.id]);
@@ -278,7 +405,7 @@ function TrabalhoCard({ trabalho, podeExcluir, onExcluir, onAbrir }) {
   );
 }
 
-function ListaTrabalhos({ trabalhos, turma, user, carregando, onExcluir, onAbrir, onAdd }) {
+function ListaTrabalhos({ trabalhos, turma, user, carregando, onExcluir, onAbrir, onAdd, onGerenciarAlunos }) {
   return (
     <div className="max-w-3xl mx-auto px-4 py-5">
       <div className="flex items-center justify-between mb-4">
@@ -287,9 +414,14 @@ function ListaTrabalhos({ trabalhos, turma, user, carregando, onExcluir, onAbrir
           <p style={{ fontSize: 12.5, color: COLORS.textMuted, marginTop: 2 }}>{trabalhos.length} trabalho{trabalhos.length !== 1 ? "s" : ""} publicado{trabalhos.length !== 1 ? "s" : ""}</p>
         </div>
         {user.papel === "professora" && (
-          <button onClick={onAdd} className="flex items-center gap-1.5 rounded-lg px-3.5 py-2.5 flex-shrink-0" style={{ background: COLORS.mustard, color: "#fff", fontSize: 13.5, fontWeight: 600 }}>
-            <Plus size={16} /> Adicionar
-          </button>
+          <div className="flex gap-2">
+            <button onClick={onGerenciarAlunos} className="flex items-center gap-1.5 rounded-lg px-3.5 py-2.5 flex-shrink-0" style={{ background: COLORS.sage, color: "#fff", fontSize: 13.5, fontWeight: 600 }}>
+              <Users size={16} /> Alunos
+            </button>
+            <button onClick={onAdd} className="flex items-center gap-1.5 rounded-lg px-3.5 py-2.5 flex-shrink-0" style={{ background: COLORS.mustard, color: "#fff", fontSize: 13.5, fontWeight: 600 }}>
+              <Plus size={16} /> Adicionar
+            </button>
+          </div>
         )}
       </div>
 
@@ -319,13 +451,15 @@ export default function App() {
 
   const [turmas, setTurmas] = useState([]);
   const [turmaAtualId, setTurmaAtualId] = useState(() => {
-  return localStorage.getItem("turmaAtualId") || "";
+    return localStorage.getItem("turmaAtualId") || "";
   });
   const [trabalhos, setTrabalhos] = useState([]);
   const [carregandoTrabalhos, setCarregandoTrabalhos] = useState(false);
 
   const [modalAberto, setModalAberto] = useState(false);
   const [trabalhoAberto, setTrabalhoAberto] = useState(null);
+
+  const [modalAlunosAberto, setModalAlunosAberto] = useState(false);
 
   const turmaAtual = turmas.find((t) => t.id === turmaAtualId) || null;
 
@@ -413,7 +547,7 @@ export default function App() {
     if(turmaAtualId){
       localStorage.setItem("turmaAtualId", turmaAtualId);
     }
-     
+      
     if (turmaAtualId){
       carregarTrabalhos(turmaAtualId);
     } 
@@ -457,6 +591,7 @@ export default function App() {
           onExcluir={excluirTrabalho}
           onAbrir={setTrabalhoAberto}
           onAdd={() => setModalAberto(true)}
+          onGerenciarAlunos={() => setModalAlunosAberto(true)}
         />
       )}
 
@@ -468,6 +603,14 @@ export default function App() {
           onPublicado={() => { setModalAberto(false); carregarTrabalhos(turmaAtualId); }}
         />
       )}
+      
+      {modalAlunosAberto && (
+        <GerenciarAlunosModal 
+          turma={turmaAtual} 
+          onClose={() => setModalAlunosAberto(false)} 
+        />
+      )}
+
       {trabalhoAberto && <PreviewModal trabalho={trabalhoAberto} onClose={() => setTrabalhoAberto(null)} />}
     </div>
   );
