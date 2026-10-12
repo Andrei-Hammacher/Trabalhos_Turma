@@ -11,11 +11,16 @@ export function papelPorEmail(email) {
 }
 
 export async function entrarComGoogle() {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: window.location.origin },
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      // Isso força o Supabase a redirecionar de volta para onde você clicou (localhost ou Vercel)
+      redirectTo: window.location.origin 
+    }
   });
+  
   if (error) throw error;
+  return data;
 }
 
 export async function sair() {

@@ -142,33 +142,37 @@ function GerenciarAlunosModal({ turma, onClose }) {
     carregarAlunos();
   }, [turma.id]);
 
-  async function adicionar(e) {
+async function adicionar(e) {
     e.preventDefault();
     if (!novoEmail) return;
     setCarregando(true);
 
+    // Usamos maybeSingle() para não dar erro vermelho se o utilizador não existir
     let { data: usuarioExistente } = await supabase
       .from("usuarios")
       .select("id")
       .eq("email", novoEmail)
-      .single();
+      .maybeSingle();
 
     let alunoId = usuarioExistente?.id;
 
+    // Se o aluno não existe, criamos um perfil provisório
     if (!alunoId) {
-      const { data: novoUsuario, error } = await supabase
+      const idTemporario = crypto.randomUUID(); // Gera um ID falso provisório
+      
+      const { error } = await supabase
         .from("usuarios")
-        .insert([{ nome: novoNome || "Aluno", email: novoEmail, papel: "aluno" }])
-        .select("id")
-        .single();
+        .insert([{ id: idTemporario, nome: novoNome || "Aluno", email: novoEmail, papel: "aluno" }]);
+        
       if (error) {
         alert("Erro ao criar aluno: " + error.message);
         setCarregando(false);
         return;
       }
-      alunoId = novoUsuario.id;
+      alunoId = idTemporario;
     }
 
+    // Vincula à turma normalmente
     const { error: erroVinculo } = await supabase
       .from("turma_alunos")
       .insert([{ turma_id: turma.id, aluno_id: alunoId }]);
@@ -487,7 +491,39 @@ export default function App() {
       return;
     }
     const nome = authUser.user_metadata?.full_name || authUser.email;
+
+    // 1. Procura se a professora lhe criou um perfil provisório antes do 1º login
+    const { data: userProvisorio } = await supabase
+      .from("usuarios")
+      .select("id")
+      .eq("email", authUser.email)
+      .neq("id", authUser.id) // O ID é diferente do oficial do Google?
+      .maybeSingle();
+
+    // 2. Garante que o utilizador oficial é criado no banco com o ID real do Google
     await supabase.from("usuarios").upsert({ id: authUser.id, nome, email: authUser.email, papel });
+
+    // 3. Se havia um perfil provisório, fazemos a transferência dos dados!
+    if (userProvisorio) {
+      // Transfere a matrícula nas turmas
+      await supabase
+        .from("turma_alunos")
+        .update({ aluno_id: authUser.id })
+        .eq("aluno_id", userProvisorio.id);
+
+      // Transfere a autoria de trabalhos 
+      await supabase
+        .from("trabalho_autores")
+        .update({ aluno_id: authUser.id })
+        .eq("aluno_id", userProvisorio.id);
+
+      // Apaga o perfil provisório antigo para não deixar lixo no banco
+      await supabase
+        .from("usuarios")
+        .delete()
+        .eq("id", userProvisorio.id);
+    }
+
     setUser({ uid: authUser.id, nome, email: authUser.email, papel });
     setErroLogin("");
   }
