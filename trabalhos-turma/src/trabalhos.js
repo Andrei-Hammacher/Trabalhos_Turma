@@ -1,7 +1,14 @@
 import { supabase } from "./supabase";
 
 export async function publicarTrabalho({ turmaId, titulo, tipo, autores, file, uid }) {
-  const caminho = `${turmaId}/${Date.now()}-${file.name}`;
+  // Limpa o nome do arquivo (remove acentos, cedilhas e troca espaços por _)
+  const nomeSeguro = file.name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+    .replace(/[^a-zA-Z0-9.-]/g, "_"); // Substitui espaços e símbolos por _
+
+  // Usa o nome seguro para criar o caminho no Supabase
+  const caminho = `${turmaId}/${Date.now()}-${nomeSeguro}`;
 
   const { error: erroUpload } = await supabase.storage.from("trabalhos").upload(caminho, file);
   if (erroUpload) throw erroUpload;
